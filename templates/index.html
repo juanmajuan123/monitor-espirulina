@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor de espirulina</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f3; --card: #ffffff; --text: #1d2a24; --muted: #66756d; --line: #dfe5e0;
+    --teal: #0f8a6c; --blue: #2f6fd0; --amber: #c27a12; --red: #c43a3a; --ok: #1f9a5a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111714; --card: #1a221e; --text: #e6efe9; --muted: #93a39a; --line: #2c3832;
+            --teal: #3cc9a4; --blue: #6fa2f0; --amber: #f0b04a; --red: #f07070; --ok: #4fd08a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  .estado { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted);
+            background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .punto { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .punto.vivo { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .punto.caido { background: var(--red); }
+  .tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tarjeta { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .tarjeta .etq { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .tarjeta .valor { font-size: 36px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .tarjeta .valor small { font-size: 16px; font-weight: 500; color: var(--muted); }
+  .tarjeta .sub { font-size: 14px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .chip { display: inline-block; margin-top: 8px; font-size: 12px; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
+  .chip.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .chip.aviso { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); }
+  .chip.peligro { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); }
+  .controles { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 12px; }
+  .rangos { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .rangos button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px;
+                   padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+  .rangos button.activo { background: var(--teal); color: #fff; }
+  a.boton { color: var(--teal); font-size: 14px; text-decoration: none; border: 1px solid var(--line);
+            background: var(--card); padding: 7px 12px; border-radius: 10px; }
+  .grafica { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 8px; margin-bottom: 12px; }
+  .grafica h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .lienzo { position: relative; height: 280px; }
+  .vacio { color: var(--muted); font-size: 14px; text-align: center; padding: 30px 0; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Fotobiorreactor de espirulina</h1>
+    <span class="estado"><span id="punto" class="punto"></span><span id="estado">Esperando datos…</span></span>
+  </header>
+
+  <section class="tarjetas">
+    <div class="tarjeta">
+      <div class="etq">Temperatura del cultivo</div>
+      <div class="valor" id="v-reactor">--<small> °C</small></div>
+      <span class="chip" id="chip-reactor" hidden></span>
+    </div>
+    <div class="tarjeta">
+      <div class="etq">Caja · frente</div>
+      <div class="valor" id="v-tfrente">--<small> °C</small></div>
+      <div class="sub" id="v-hfrente">Humedad: -- %</div>
+    </div>
+    <div class="tarjeta">
+      <div class="etq">Caja · atrás</div>
+      <div class="valor" id="v-tatras">--<small> °C</small></div>
+      <div class="sub" id="v-hatras">Humedad: -- %</div>
+    </div>
+  </section>
+
+  <div class="controles">
+    <div class="rangos" id="rangos">
+      <button data-h="1">1 h</button>
+      <button data-h="6" class="activo">6 h</button>
+      <button data-h="24">24 h</button>
+      <button data-h="168">7 días</button>
+    </div>
+    <a class="boton" id="descargar" href="/descargar.csv?horas=168">Descargar CSV</a>
+  </div>
+
+  <div class="grafica">
+    <h2>Temperatura (°C)</h2>
+    <div class="lienzo"><canvas id="g-temp"></canvas></div>
+  </div>
+  <div class="grafica">
+    <h2>Humedad relativa de la caja (%)</h2>
+    <div class="lienzo"><canvas id="g-hum"></canvas></div>
+  </div>
+
+  <footer>Se actualiza sola cada 30 segundos. Rango ideal del cultivo: 28–35 °C · nunca arriba de 41 °C.</footer>
+</main>
+
+<script>
+const REFRESCO_MS = 30000;
+let horas = 6;
+let gTemp, gHum;
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 1) => (v === null || v === undefined) ? "--" : Number(v).toFixed(d);
+
+function etiquetaHora(iso) {
+  const d = new Date(iso);
+  const op = horas > 24
+    ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
+    : { hour: "2-digit", minute: "2-digit" };
+  return d.toLocaleString("es-MX", op);
+}
+
+function crearGrafica(id, series) {
+  const lineas = css("--line"), muted = css("--muted");
+  return new Chart(document.getElementById(id), {
+    type: "line",
+    data: { labels: [], datasets: series.map(s => ({
+      label: s.nombre, data: [], borderColor: s.color, backgroundColor: s.color,
+      borderWidth: 2, pointRadius: 0, tension: 0.25, spanGaps: true
+    })) },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: muted, boxWidth: 12, boxHeight: 12 } } },
+      scales: {
+        x: { ticks: { color: muted, maxTicksLimit: window.innerWidth < 600 ? 4 : 8, maxRotation: 0 }, grid: { color: lineas } },
+        y: { ticks: { color: muted }, grid: { color: lineas } }
+      }
+    }
+  });
+}
+
+function estadoCultivo(t) {
+  if (t === null || t === undefined) return null;
+  if (t >= 41) return ["peligro", "Crítico: muy caliente"];
+  if (t >= 38) return ["aviso", "Caliente, vigilar"];
+  if (t >= 28) return ["ok", "Rango ideal"];
+  if (t >= 20) return ["aviso", "Fresco: crece lento"];
+  return ["peligro", "Muy frío: casi no crece"];
+}
+
+function pintarActual(u) {
+  if (!u) return;
+  document.getElementById("v-reactor").innerHTML = fmt(u.t_reactor) + "<small> °C</small>";
+  document.getElementById("v-tfrente").innerHTML = fmt(u.t_frente) + "<small> °C</small>";
+  document.getElementById("v-tatras").innerHTML  = fmt(u.t_atras)  + "<small> °C</small>";
+  document.getElementById("v-hfrente").textContent = "Humedad: " + fmt(u.h_frente, 0) + " %";
+  document.getElementById("v-hatras").textContent  = "Humedad: " + fmt(u.h_atras, 0) + " %";
+
+  const chip = document.getElementById("chip-reactor");
+  const e = estadoCultivo(u.t_reactor);
+  if (e) { chip.className = "chip " + e[0]; chip.textContent = e[1]; chip.hidden = false; }
+  else chip.hidden = true;
+
+  const seg = (Date.now() - new Date(u.ts).getTime()) / 1000;
+  const punto = document.getElementById("punto"), est = document.getElementById("estado");
+  if (seg < 90) {
+    punto.className = "punto vivo";
+    est.textContent = "En línea · " + new Date(u.ts).toLocaleTimeString("es-MX");
+  } else {
+    punto.className = "punto caido";
+    const min = Math.round(seg / 60);
+    est.textContent = min < 60 ? `Sin datos hace ${min} min` : `Sin datos hace ${Math.round(min / 60)} h`;
+  }
+}
+
+async function actualizar() {
+  try {
+    const [rh, ru] = await Promise.all([
+      fetch(`/api/lecturas?horas=${horas}`), fetch("/api/ultima")
+    ]);
+    const filas = await rh.json();
+    const ultima = await ru.json();
+    pintarActual(ultima);
+    if (!ultima) {
+      document.getElementById("estado").textContent = "Aún no llegan datos del ESP32";
+    }
+
+    const labels = filas.map(f => etiquetaHora(f.ts));
+    gTemp.data.labels = labels;
+    gTemp.data.datasets[0].data = filas.map(f => f.t_reactor);
+    gTemp.data.datasets[1].data = filas.map(f => f.t_frente);
+    gTemp.data.datasets[2].data = filas.map(f => f.t_atras);
+    gTemp.update();
+
+    gHum.data.labels = labels;
+    gHum.data.datasets[0].data = filas.map(f => f.h_frente);
+    gHum.data.datasets[1].data = filas.map(f => f.h_atras);
+    gHum.update();
+  } catch (err) {
+    document.getElementById("punto").className = "punto caido";
+    document.getElementById("estado").textContent = "No se pudo conectar al servidor";
+  }
+}
+
+gTemp = crearGrafica("g-temp", [
+  { nombre: "Cultivo", color: css("--teal") },
+  { nombre: "Caja frente", color: css("--blue") },
+  { nombre: "Caja atrás", color: css("--amber") }
+]);
+gHum = crearGrafica("g-hum", [
+  { nombre: "Frente", color: css("--blue") },
+  { nombre: "Atrás", color: css("--amber") }
+]);
+
+document.getElementById("rangos").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  horas = Number(b.dataset.h);
+  document.querySelectorAll("#rangos button").forEach(x => x.classList.toggle("activo", x === b));
+  actualizar();
+});
+
+actualizar();
+setInterval(actualizar, REFRESCO_MS);
+</script>
+</body>
+</html>
